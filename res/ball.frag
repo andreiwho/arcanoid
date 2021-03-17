@@ -1,0 +1,13 @@
+#version 460 core
+
+out vec4 color;
+
+in vec2 vs_position;
+
+void main(void)
+{
+    float radiusFactor = 20.0;
+    vec2 center = vec2(0.0,0.0);
+    float col = 1.0 - abs(radiusFactor * distance(center, vs_position));
+    color = vec4(col, col, col, 1.0);
+}

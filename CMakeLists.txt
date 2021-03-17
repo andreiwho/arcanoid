@@ -8,3 +8,7 @@ project(arcanoid CXX)
     target_link_libraries(arcanoid PUBLIC ${CONAN_LIBS})
     target_compile_features(arcanoid PUBLIC cxx_std_20)
     target_include_directories(arcanoid PUBLIC src glm)
+
+    set_target_properties(arcanoid
+        PROPERTIES
+            VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/res)

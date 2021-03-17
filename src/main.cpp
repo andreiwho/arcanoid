@@ -5,18 +5,149 @@
 #include <iostream>
 #include <stdexcept>
 #include <memory>
+#include <string_view>
 
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
+using Vec2 = glm::vec2;
+using Mat4 = glm::mat4;
 
 template<typename T> using Scoped = std::unique_ptr<T>;
 template<typename T> using Ref = std::shared_ptr<T>;
 
 #include <vector>
+#include <fstream>
+
+using namespace std::string_literals;
+
+// -------------------------------------------------------------------------------------------
+class Shader
+{
+private:
+    GLuint id{ 0 };
+
+    GLint projectionMatrix;
+    GLint modelMatrix;
+
+public:
+    Shader(std::string_view vertFile, std::string_view fragFile)
+    {
+        id = glCreateProgram();
+        GLuint vs = compileShader(GL_VERTEX_SHADER, vertFile);
+        GLuint fs = compileShader(GL_FRAGMENT_SHADER, fragFile);
+
+        glAttachShader(id, vs);
+        glAttachShader(id, fs);
+
+        glLinkProgram(id);
+        glValidateProgram(id);
+
+        glDetachShader(id, fs);
+        glDetachShader(id, vs);
+
+        glDeleteShader(fs);
+        glDeleteShader(vs);
+
+        projectionMatrix = glGetUniformLocation(id, "projectionMatrix");
+        modelMatrix = glGetUniformLocation(id, "modelMatrix");
+    }
+
+    ~Shader()
+    {
+        if (id)
+        {
+            glDeleteProgram(id);
+        }
+    }
+
+    Shader(const Shader&) = delete;
+    Shader& operator=(const Shader&) = delete;
+
+    Shader(Shader&& other) noexcept
+    {
+        if (id)
+        {
+            glDeleteProgram(id);
+        }
+
+        id = other.id;
+        other.id = 0;
+    }
+
+    Shader& operator=(Shader&& other) noexcept
+    {
+        if (id)
+        {
+            glDeleteProgram(id);
+        }
+
+        id = other.id;
+        other.id = 0;
+        return *this;
+    }
+
+    GLuint compileShader(GLenum type, std::string_view file)
+    {
+        std::ifstream f(file.data(), std::ios::ate | std::ios::badbit);
+        size_t size = f.tellg();
+        f.seekg(0);
+        std::vector<char> src(size);
+        f.read(src.data(), size);
+        f.close();
+
+        GLuint shaderId = glCreateShader(type);
+        const char* srcCstr = src.data();
+        glShaderSource(shaderId, 1, &srcCstr, nullptr);
+
+        int result = 0;
+        glCompileShader(shaderId);
+        glGetShaderiv(shaderId, GL_COMPILE_STATUS, &result);
+        if (!result)
+        {
+            int shaderLogLength = 0;
+            glGetShaderiv(shaderId, GL_INFO_LOG_LENGTH, &shaderLogLength);
+            std::string log;
+            log.resize(shaderLogLength);
+            glGetShaderInfoLog(shaderId, shaderLogLength, &shaderLogLength, log.data());
+
+            throw std::runtime_error("Failed to compile shader: "s + log);
+        }
+
+        return shaderId;
+    }
+
+    GLuint getId() const
+    {
+        return id;
+    }
+
+    void setProjectionMatrix(const Mat4& mat)
+    {
+        setUniform(projectionMatrix, mat);
+    }
+
+    void setModelMatrix(const Mat4& mat)
+    {
+        setUniform(modelMatrix, mat);
+    }
+
+private:
+    void setUniform(GLint location, const Mat4& mat)
+    {
+        glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(mat));
+    }
+};
 
 // -------------------------------------------------------------------------------------------
 struct Vertex
 {
-    glm::vec2 position;
+    Vertex(Vec2 position)
+        : position(position)
+    {}
+
+    Vec2 position;
 };
 
 void APIENTRY glCallback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message, const void* userParam)
@@ -35,7 +166,7 @@ private:
 public:
     template<typename T>
     Buffer(GLenum kind, GLenum usage, const std::vector<T>& data)
-        :   kind(kind),  usage(usage)
+        : kind(kind), usage(usage)
     {
         glCreateBuffers(1, &id);
         if (id == 0)
@@ -58,8 +189,8 @@ public:
     Buffer& operator=(const Buffer&) = delete;
 
     Buffer(Buffer&& other) noexcept
-        :   kind(other.kind),
-            usage(other.usage)
+        : kind(other.kind),
+        usage(other.usage)
     {
         if (id)
         {
@@ -170,9 +301,160 @@ public:
         glVertexArrayVertexBuffer(id, 0, pBuffer->getId(), 0, sizeof Vertex);
     }
 
+    void bindIndexBuffer(const Buffer* pBuffer)
+    {
+        glVertexArrayElementBuffer(id, pBuffer->getId());
+    }
+
     GLuint getId() const
     {
         return id;
+    }
+};
+
+
+// -------------------------------------------------------------------------------------------
+class Quad
+{
+    Ref<VertexArray> vao;
+    Ref<Buffer> vbo;
+    Ref<Buffer> ibo;
+    Ref<Shader> shader;
+
+    Vec2 position{ 0.0f, -0.5f };
+    Vec2 size{ 1.0f, 0.2f };
+
+public:
+    Quad(Vec2 position, Vec2 size, std::string_view vs, std::string_view fs)
+        : position(position), size(size)
+    {
+        std::vector<Vertex> vertices =
+        {
+            Vertex({position.x - size.x / 2, position.y + size.y / 2}),
+            Vertex({position.x - size.x / 2, position.y - size.y / 2}),
+            Vertex({position.x + size.x / 2, position.y - size.y / 2}),
+            Vertex({position.x + size.x / 2, position.y + size.y / 2}),
+        };
+
+        std::vector<GLuint> indices =
+        {
+            0,1,3,3,1,2
+        };
+
+        vbo = std::make_shared<Buffer>(GL_ARRAY_BUFFER, GL_STATIC_DRAW, vertices);
+        ibo = std::make_shared<Buffer>(GL_ELEMENT_ARRAY_BUFFER, GL_STATIC_DRAW, indices);
+
+        vao = std::make_shared<VertexArray>();
+
+        std::vector<VertexArray::LayoutElem> layout = {
+            {0, 2, GL_FLOAT, false, sizeof(Vertex), 0}
+        };
+
+        vao->bindVertexBuffer(vbo.get());
+        vao->bindIndexBuffer(ibo.get());
+        vao->bindLayout(layout);
+
+        shader = std::make_shared<Shader>(vs, fs);
+    }
+
+    void draw(const Mat4& projection)
+    {
+        Mat4 modelMatrix = glm::identity<Mat4>();
+        modelMatrix = glm::translate(modelMatrix, glm::vec3(position, 1.0f));
+
+        glBindVertexArray(vao->getId());
+        glUseProgram(shader->getId());
+        shader->setProjectionMatrix(projection);
+        shader->setModelMatrix(modelMatrix);
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+    }
+
+    Vec2 getSize() const
+    {
+        return size;
+    }
+
+    Vec2 getPosition() const
+    {
+        return position;
+    }
+
+    void moveX(float amount)
+    {
+        float clamp = 2.0f - (size.x / 2.0f);
+
+        position.x += amount;
+        position.x = glm::clamp(position.x, -clamp, clamp);
+    }
+
+    void moveY(float amount)
+    {
+        float clamp = 1.5f - (size.y / 2.0f);
+
+        position.y += amount;
+        position.y = glm::clamp(position.y, -clamp, clamp);
+    }
+};
+
+class PlayerPlatform
+{
+private:
+    Quad quad;
+
+public:
+    PlayerPlatform(Vec2 position, Vec2 size)
+        : quad(position, size, "basic.vert", "basic.frag")
+    {
+    }
+
+    void draw(const Mat4& projection)
+    {
+        quad.draw(projection);
+    }
+
+    void move(float direction, float speed)
+    {
+        quad.moveX(direction * speed);
+    }
+};
+
+class Ball
+{
+private:
+    Quad quad;
+
+public:
+    Ball(Vec2 position, Vec2 size)
+        : quad(position, size, "ball.vert", "ball.frag")
+    {}
+
+    void draw(const Mat4& projection)
+    {
+        quad.draw(projection);
+    }
+
+    void move(Vec2 direction, float speed)
+    {
+        quad.moveX(direction.x * speed);
+        quad.moveY(direction.y * speed);
+    }
+
+    void bounce(float speed)
+    {
+        float yBouncePoint = 1.499f - (quad.getSize().y / 2.0f);
+        float xBouncePoint = 1.999f - (quad.getSize().x / 2.0f);
+        static float step = 1.0f;
+
+        quad.moveX(step * speed);
+
+        if (quad.getPosition().x > xBouncePoint)
+        {
+            step = -1.0f;
+        }
+        if (quad.getPosition().x < -xBouncePoint)
+        {
+            step = 1.0f;
+        }
     }
 };
 
@@ -183,11 +465,12 @@ class Application
 private:
     GLFWwindow* window{ nullptr };
 
-    Ref<VertexArray> vao;
-    Ref<Buffer> vbo;
+    Ref<PlayerPlatform> player;
+    Ref<Ball> ball;
 
+    Mat4 orthoMatrix;
 public:
-    Application(int width, int height, const char* title)
+    Application(int width, int height, std::string_view title)
     {
         initWindow(width, height, title);
         initContext();
@@ -196,7 +479,7 @@ public:
 
     int run()
     {
-        glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         while (!glfwWindowShouldClose(window))
         {
             auto now = glfwGetTime();
@@ -204,7 +487,7 @@ public:
             glClear(GL_COLOR_BUFFER_BIT);
             render();
             glfwSwapBuffers(window);
-            update(glfwGetTime() - now);
+            update(static_cast<float>(glfwGetTime() - now));
         }
 
         glfwTerminate();
@@ -212,19 +495,21 @@ public:
     }
 
 private:
-    void update(double deltaTime)
+    void update(float deltaTime)
     {
-
+        player->move(deltaTime * -glfwGetKey(window, GLFW_KEY_A), 1.5f);
+        player->move(deltaTime * glfwGetKey(window, GLFW_KEY_D), 1.5f);
+        ball->bounce(deltaTime * 1.5f);
     }
 
     void render()
     {
-        glBindVertexArray(vao->getId());
-        glDrawArrays(GL_TRIANGLES, 0, 3);
+        player->draw(orthoMatrix);
+        ball->draw(orthoMatrix);
     }
 
 private:
-    void initWindow(int width, int height, const char* title)
+    void initWindow(int width, int height, std::string_view title)
     {
         if (!glfwInit())
         {
@@ -235,7 +520,7 @@ private:
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
         glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
-        window = glfwCreateWindow(width, height, title, nullptr, nullptr);
+        window = glfwCreateWindow(width, height, title.data(), nullptr, nullptr);
         if (!window)
         {
             throw std::runtime_error("Failed to create a window");
@@ -255,27 +540,17 @@ private:
 #ifndef NDEBUG
         glDebugMessageCallback(glCallback, nullptr);
 #endif
+
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     }
 
     // Load assets
     void createResources()
     {
-
-        vao = std::make_shared<VertexArray>();
-
-        // Create quad
-        vbo = std::make_shared<Buffer>(GL_ARRAY_BUFFER, GL_STATIC_DRAW, std::vector{
-            Vertex {{0.0f, 0.5f}},
-            Vertex {{-0.5f, -0.5f}},
-            Vertex {{0.5f, -0.5f}},
-        });
-
-        std::vector<VertexArray::LayoutElem> layout = {
-            {0, 2, GL_FLOAT, false, sizeof(Vertex), 0}
-        };
-
-        vao->bindVertexBuffer(vbo.get());
-        vao->bindLayout(layout);
+        player = std::make_shared<PlayerPlatform>(Vec2{ 0.0f, -0.6f }, Vec2{ 0.3f, 0.05f });
+        ball = std::make_shared<Ball>(Vec2{ 0.0f, 0.0f }, Vec2{ 0.1f, 0.1f });
+        orthoMatrix = glm::ortho(-2.0f, 2.0f, -1.5f, 1.5f);
     }
 
 };
@@ -288,7 +563,7 @@ int main()
 {
     try
     {
-        auto app = std::make_unique<Application>(1280, 720, "Arcanoid");
+        auto app = std::make_unique<Application>(800, 600, "Arcanoid");
         return app->run();
     }
     catch (const std::runtime_error& e)
