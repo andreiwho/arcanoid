@@ -1,0 +1,12 @@
+.vscode/
+.vs/
+*.sln
+*.vcxproj
+out/
+obj/
+*.cmake
+*.filters
+Debug
+Release
+CMakeCache.txt
+vendor
