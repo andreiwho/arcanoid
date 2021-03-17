@@ -9,5 +9,6 @@ void main(void)
     float radiusFactor = 20.0;
     vec2 center = vec2(0.0,0.0);
     float col = 1.0 - abs(radiusFactor * distance(center, vs_position));
-    color = vec4(col, col, col, 1.0);
+    vec3 color_tmp = vec3(1.0, 0.5, 0.0);
+    color = vec4(color_tmp * col, 1.0);
 }

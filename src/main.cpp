@@ -482,10 +482,12 @@ public:
         }
 
         // Check for player intersection
+        constexpr float collisionBias = 0.57f;
+
         if (getPosition().x < player->getPosition().x + player->getSize().x / 2
             && getPosition().x > player->getPosition().x - player->getSize().x / 2
-            && getPosition().y < player->getPosition().y + player->getSize().y / 2 - 0.55f
-            && getPosition().y > player->getPosition().y - player->getSize().y / 2 - 0.55f)
+            && getPosition().y < player->getPosition().y + player->getSize().y / 2 - collisionBias
+            && getPosition().y > player->getPosition().y - player->getSize().y / 2 - collisionBias)
         {
             yStep = -yStep;
         }
@@ -591,7 +593,7 @@ private:
     // Load assets
     void createResources()
     {
-        player = std::make_shared<PlayerPlatform>(Vec2{ 0.0f, -0.6f }, Vec2{ 0.3f, 0.05f });
+        player = std::make_shared<PlayerPlatform>(Vec2{ 0.0f, -0.6f }, Vec2{ 0.4f, 0.05f });
         ball = std::make_shared<Ball>(Vec2{ 0.0f, 0.0f }, Vec2{ 0.1f, 0.1f }, player);
         orthoMatrix = glm::ortho(-2.0f, 2.0f, -1.5f, 1.5f);
     }
