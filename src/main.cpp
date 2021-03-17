@@ -28,8 +28,8 @@ class Shader
 private:
     GLuint id{ 0 };
 
-    GLint projectionMatrix;
-    GLint modelMatrix;
+    GLint projectionMatrix{0};
+    GLint modelMatrix{0};
 
 public:
     Shader(std::string_view vertFile, std::string_view fragFile)
@@ -482,12 +482,13 @@ public:
         }
 
         // Check for player intersection
-        constexpr float collisionBias = 0.57f;
+        constexpr float collisionBias = 0.6f;
+        constexpr float selfBias = 0.1f;
 
-        if (getPosition().x < player->getPosition().x + player->getSize().x / 2
-            && getPosition().x > player->getPosition().x - player->getSize().x / 2
-            && getPosition().y < player->getPosition().y + player->getSize().y / 2 - collisionBias
-            && getPosition().y > player->getPosition().y - player->getSize().y / 2 - collisionBias)
+        if (getPosition().x - selfBias < player->getPosition().x + player->getSize().x / 2
+            && getPosition().x + selfBias > player->getPosition().x - player->getSize().x / 2
+            && getPosition().y - selfBias< player->getPosition().y + player->getSize().y / 2 - collisionBias
+            && getPosition().y + selfBias > player->getPosition().y - player->getSize().y / 2 - collisionBias)
         {
             yStep = -yStep;
         }
