@@ -10,3 +10,4 @@ Debug
 Release
 CMakeCache.txt
 vendor
+CMakeFiles
