@@ -416,6 +416,16 @@ public:
     {
         quad.moveX(direction * speed);
     }
+
+    Vec2 getPosition() const
+    {
+        return quad.getPosition();
+    }
+
+    Vec2 getSize() const
+    {
+        return quad.getSize();
+    }
 };
 
 class Ball
@@ -423,9 +433,11 @@ class Ball
 private:
     Quad quad;
 
+    Ref<PlayerPlatform> player;
+
 public:
-    Ball(Vec2 position, Vec2 size)
-        : quad(position, size, "ball.vert", "ball.frag")
+    Ball(Vec2 position, Vec2 size, const Ref<PlayerPlatform>& player)
+        : quad(position, size, "ball.vert", "ball.frag"), player(player)
     {}
 
     void draw(const Mat4& projection)
@@ -439,21 +451,52 @@ public:
         quad.moveY(direction.y * speed);
     }
 
+    Vec2 getPosition() const
+    {
+        return quad.getPosition();
+    }
+
+    Vec2 getSize() const
+    {
+        return quad.getSize();
+    }
+
+    // Test code before implementing collision detection
     void bounce(float speed)
     {
         float yBouncePoint = 1.499f - (quad.getSize().y / 2.0f);
         float xBouncePoint = 1.999f - (quad.getSize().x / 2.0f);
-        static float step = 1.0f;
+        static float xStep = 1.0f;
+        static float yStep = 1.0f;
 
-        quad.moveX(step * speed);
+        quad.moveX(xStep * speed);
+        quad.moveY(yStep * speed);
 
         if (quad.getPosition().x > xBouncePoint)
         {
-            step = -1.0f;
+            xStep = -1.0f;
         }
         if (quad.getPosition().x < -xBouncePoint)
         {
-            step = 1.0f;
+            xStep = 1.0f;
+        }
+
+        // Check for player intersection
+        if (getPosition().x < player->getPosition().x + player->getSize().x / 2
+            && getPosition().x > player->getPosition().x - player->getSize().x / 2
+            && getPosition().y < player->getPosition().y + player->getSize().y / 2 - 0.55f
+            && getPosition().y > player->getPosition().y - player->getSize().y / 2 - 0.55f)
+        {
+            yStep = -yStep;
+        }
+
+        if (quad.getPosition().y > yBouncePoint)
+        {
+            yStep = -1.0f;
+        }
+        if (quad.getPosition().y < -yBouncePoint)
+        {
+            yStep = 1.0f;
         }
     }
 };
@@ -549,7 +592,7 @@ private:
     void createResources()
     {
         player = std::make_shared<PlayerPlatform>(Vec2{ 0.0f, -0.6f }, Vec2{ 0.3f, 0.05f });
-        ball = std::make_shared<Ball>(Vec2{ 0.0f, 0.0f }, Vec2{ 0.1f, 0.1f });
+        ball = std::make_shared<Ball>(Vec2{ 0.0f, 0.0f }, Vec2{ 0.1f, 0.1f }, player);
         orthoMatrix = glm::ortho(-2.0f, 2.0f, -1.5f, 1.5f);
     }
 
