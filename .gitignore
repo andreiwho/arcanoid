@@ -11,3 +11,7 @@ Release
 CMakeCache.txt
 vendor
 CMakeFiles
+*.dir
+bin
+x64
+*.user
