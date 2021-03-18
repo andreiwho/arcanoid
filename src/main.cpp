@@ -5,6 +5,9 @@
 #include "glad/glad.h"
 #include <GLFW/glfw3.h>
 
+#include <AL/al.h>
+#include <AL/alc.h>
+
 
 #include <iostream>
 #include <stdexcept>
@@ -138,6 +141,9 @@ public:
 };
 
 template<typename T> using Ref = RefCnt<T>;
+
+// -------------------------------------------------------------------------------------------
+
 
 // -------------------------------------------------------------------------------------------
 class Shader : public IRefCounted
@@ -795,6 +801,8 @@ class Application
 {
 private:
     GLFWwindow* window{ nullptr };
+    ALCdevice* audioDevice{ nullptr };
+    ALCcontext* audioContext{ nullptr };
 
     Ref<PlayerPlatform> player;
     Ref<Ball> ball;
@@ -806,6 +814,7 @@ public:
     {
         initWindow(width, height, title);
         initContext();
+        initAudio();
         createResources();
     }
 
@@ -886,6 +895,24 @@ private:
 
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    }
+
+    void initAudio()
+    {
+        audioDevice = alcOpenDevice(nullptr);
+
+        if (!audioDevice)
+        {
+            throw std::runtime_error("Failed to init OpenAL");
+        }
+
+        audioContext = alcCreateContext(audioDevice, nullptr);
+        if (!audioContext)
+        {
+            throw std::runtime_error("Failed to init OpenAL context");
+        }
+
+        alcMakeContextCurrent(audioContext);
     }
 
     // Load assets
