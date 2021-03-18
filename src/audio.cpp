@@ -1,5 +1,6 @@
 #include "audio.h"
 #include <stdexcept>
+#include <iostream>
 
 int convertToInt(char* buffer, size_t size)
 {
@@ -38,6 +39,17 @@ bool wavLoadHeader(std::ifstream& file, ALubyte* numChannels, ALint* sampleRate,
         throw std::runtime_error("Failed to read size of file");
     }
 
+    // WAVE
+    if (!file.read(buffer, 4))
+    {
+        throw std::runtime_error("Failed to read WAVE");
+    }
+
+    if (std::strncmp(buffer, "WAVE", 4) != 0)
+    {
+        throw std::runtime_error("File is not a valid WAVE file (it does not contain WAVE)");
+    }
+
     // fmt/0
     if (!file.read(buffer, 4))
     {
@@ -51,7 +63,7 @@ bool wavLoadHeader(std::ifstream& file, ALubyte* numChannels, ALint* sampleRate,
     }
 
     // PCM should be 1?
-    if (!file.read(buffer, 4))
+    if (!file.read(buffer, 2))
     {
         throw std::runtime_error("Could  not read PCM");
     }
@@ -70,6 +82,7 @@ bool wavLoadHeader(std::ifstream& file, ALubyte* numChannels, ALint* sampleRate,
     }
     *sampleRate = convertToInt(buffer, 4);
 
+    // (sampleRate * bitsPerSample * channels) / 8
     if (!file.read(buffer, 4))
     {
         throw std::runtime_error("Failed to read (sampleRate * bitsPerSample * channels) / 8");
@@ -96,6 +109,7 @@ bool wavLoadHeader(std::ifstream& file, ALubyte* numChannels, ALint* sampleRate,
 
     if (std::strncmp(buffer, "data", 4) != 0)
     {
+        std::cout << buffer << std::endl;
         throw std::runtime_error("The file is not a valid WAV file. It doesn't contain 'data' tag");
     }
 

@@ -154,7 +154,11 @@ private:
 public:
     AudioEntry(std::string_view file)
     {
-        
+        ALubyte numChannels;
+        ALint sampleRate;
+        ALubyte bitsPerSample;
+        ALsizei size;
+        wavLoadFile(file, &numChannels, &sampleRate, &bitsPerSample, &size);
     }
 };
 
@@ -947,6 +951,8 @@ private:
         ball = Ref<Ball>::make(Vec2{ 0.0f, 0.0f }, Vec2{ 0.1f, 0.1f }, player, grid);
 
         orthoMatrix = glm::ortho(-2.0f, 2.0f, -1.5f, 1.5f);
+
+        Ref<AudioEntry> entry = Ref<AudioEntry>::make("audio/click.wav");
     }
 
 };
