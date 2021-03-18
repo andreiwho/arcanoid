@@ -28,8 +28,8 @@ class Shader
 private:
     GLuint id{ 0 };
 
-    GLint projectionMatrix{0};
-    GLint modelMatrix{0};
+    GLint projectionMatrix{ 0 };
+    GLint modelMatrix{ 0 };
 
 public:
     Shader(std::string_view vertFile, std::string_view fragFile)
@@ -428,16 +428,172 @@ public:
     }
 };
 
+// -------------------------------------------------------------------------------------------
+class BoxGrid
+{
+public:
+    struct Box
+    {
+        Vertex topLeft;
+        Vertex bottomLeft;
+        Vertex bottomRight;
+        Vertex topRight;
+
+        bool hit(Vec2 position, Vec2 size) const
+        {
+            constexpr float selfBias = 0.1f;
+
+            if (position.x - selfBias < topRight.position.x
+                && position.x + selfBias > topLeft.position.x
+                && position.y - selfBias < topLeft.position.y
+                && position.y + selfBias > bottomRight.position.y)
+            {
+                return true;
+            }
+            return false;
+        }
+    };
+
+private:
+    Ref<VertexArray> vao;
+    Ref<Buffer>  vbo;
+    Ref<Buffer> ibo;
+
+    Ref<Shader> shader;
+    std::vector<Box> vertices;
+
+    Vec2 position;
+    Vec2 boxSize;
+    float margin;
+    int countX;
+    int countY;
+
+    std::vector<size_t> skippedBoxes;
+
+    size_t indexCount = 0;
+
+public:
+    BoxGrid(Vec2 position, Vec2 boxSize = Vec2(0.5f, 0.5f), float margin = 0.01f, int countX = 10, int countY = 3)
+        :   position(position), boxSize(boxSize), margin(margin), countX(countX), countY(countY)
+    {
+        regenerate();
+    }
+
+    void regenerate()
+    {
+        vertices = generateVertices(position, boxSize, margin, countX, countY);
+        auto indices = generateIndices(vertices.size());
+
+        vbo = std::make_shared<Buffer>(GL_ARRAY_BUFFER, GL_STATIC_DRAW, vertices);
+        ibo = std::make_shared<Buffer>(GL_ELEMENT_ARRAY_BUFFER, GL_STATIC_DRAW, indices);
+
+        vao = std::make_shared<VertexArray>();
+
+        std::vector<VertexArray::LayoutElem> layout = {
+            {0, 2, GL_FLOAT, false, sizeof(Vertex), 0}
+        };
+
+        vao->bindVertexBuffer(vbo.get());
+        vao->bindIndexBuffer(ibo.get());
+        vao->bindLayout(layout);
+
+        shader = std::make_shared<Shader>("box.vert", "box.frag");
+
+        indexCount = indices.size();
+    }
+
+    std::vector<Box> generateVertices(Vec2 position, Vec2 boxSize, float margin, int countX, int countY)
+    {
+        float lastX = position.x;
+        float lastY = position.y;
+
+        std::vector<Box> vertices;
+        vertices.reserve(static_cast<size_t>(countX) * countY);
+
+        size_t boxIndex = 0;
+        for (int y = 0; y < countY; y++)
+        {
+            for (int x = 0; x < countX; x++)
+            {
+                for (auto idx : skippedBoxes)
+                {
+                    if (boxIndex == idx)
+                    {
+                        vertices.emplace_back(Box{ Vec2{-100.0f, -100.0f}, Vec2{-100.0f, -100.0f}, Vec2{-100.0f, -100.0f}, Vec2{-100.0f, -100.0f} });
+                        goto skip_box;
+                    }
+                }
+
+                vertices.emplace_back(Box{
+                   .topLeft = Vec2{ lastX - boxSize.x / 2, lastY + boxSize.y / 2 },
+                   .bottomLeft = Vec2{ lastX - boxSize.x / 2, lastY - boxSize.y / 2 },
+                   .bottomRight = Vec2{ lastX + boxSize.x / 2, lastY - boxSize.y / 2 },
+                   .topRight = Vec2{ lastX + boxSize.x / 2, lastY + boxSize.y / 2 } });
+                
+                skip_box:
+                lastX += margin + boxSize.x;
+                boxIndex++;
+            }
+            lastY -= margin + boxSize.y;
+            lastX = position.x;
+        }
+
+        return vertices;
+    }
+
+    std::vector<GLuint> generateIndices(size_t vertexCount)
+    {
+        std::vector<GLuint> indices;
+        indices.reserve(vertexCount * 6);
+
+        GLuint lastIdx = 0;
+        for (size_t i = 0; i < vertexCount; i++)
+        {
+            indices.emplace_back(lastIdx);
+            indices.emplace_back(lastIdx + 1);
+            indices.emplace_back(lastIdx + 3);
+            indices.emplace_back(lastIdx + 3);
+            indices.emplace_back(lastIdx + 1);
+            indices.emplace_back(lastIdx + 2);
+            lastIdx += 4;
+        }
+
+        return indices;
+    }
+
+    void draw(const Mat4& projection)
+    {
+        glBindVertexArray(vao->getId());
+        glUseProgram(shader->getId());
+        shader->setProjectionMatrix(projection);
+        shader->setModelMatrix(glm::identity<glm::mat4>());
+        glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(indexCount), GL_UNSIGNED_INT, nullptr);
+    }
+
+    const std::vector<Box>& getBoxes() const
+    {
+        return vertices;
+    }
+
+    void destroyBox(size_t idx)
+    {
+        skippedBoxes.push_back(idx);
+        regenerate();
+    }
+};
+
+
 class Ball
 {
 private:
     Quad quad;
 
     Ref<PlayerPlatform> player;
+    Ref<BoxGrid> grid;
 
 public:
-    Ball(Vec2 position, Vec2 size, const Ref<PlayerPlatform>& player)
-        : quad(position, size, "ball.vert", "ball.frag"), player(player)
+    Ball(Vec2 position, Vec2 size, const Ref<PlayerPlatform>& player, const Ref<BoxGrid>& grid)
+        : quad(position, size, "ball.vert", "ball.frag"), player(player), grid(grid)
     {}
 
     void draw(const Mat4& projection)
@@ -491,6 +647,18 @@ public:
             && getPosition().y + selfBias > player->getPosition().y - player->getSize().y / 2 - collisionBias)
         {
             yStep = -yStep;
+            return;
+        }
+
+        const auto& boxes = grid->getBoxes();
+        for (size_t i = 0; i < boxes.size(); i++)
+        {
+            if (boxes[i].hit(getPosition(), getSize()))
+            {
+                yStep = -yStep;
+                grid->destroyBox(i);
+                return;
+            }
         }
 
         if (quad.getPosition().y > yBouncePoint)
@@ -513,6 +681,7 @@ private:
 
     Ref<PlayerPlatform> player;
     Ref<Ball> ball;
+    Ref<BoxGrid> grid;
 
     Mat4 orthoMatrix;
 public:
@@ -552,6 +721,7 @@ private:
     {
         player->draw(orthoMatrix);
         ball->draw(orthoMatrix);
+        grid->draw(orthoMatrix);
     }
 
 private:
@@ -595,7 +765,20 @@ private:
     void createResources()
     {
         player = std::make_shared<PlayerPlatform>(Vec2{ 0.0f, -0.6f }, Vec2{ 0.4f, 0.05f });
-        ball = std::make_shared<Ball>(Vec2{ 0.0f, 0.0f }, Vec2{ 0.1f, 0.1f }, player);
+
+        // Starting margin
+        //  -2.0f + margin + xSize / 2, 1.5f - margin - ySize / 2
+
+        constexpr int gridX = 10;
+        constexpr int gridY = 8;
+
+        constexpr float margin = 0.01f;
+        constexpr float xSize = 4.0f / gridX - margin * 1.1f;
+        constexpr float ySize = xSize / 3;
+
+        grid = std::make_shared<BoxGrid>(Vec2{ -2.0f + margin + xSize / 2, 1.5f - margin - ySize / 2 }, Vec2(xSize, ySize), margin, gridX, gridY);
+        ball = std::make_shared<Ball>(Vec2{ 0.0f, 0.0f }, Vec2{ 0.1f, 0.1f }, player, grid);
+
         orthoMatrix = glm::ortho(-2.0f, 2.0f, -1.5f, 1.5f);
     }
 
