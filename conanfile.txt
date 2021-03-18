@@ -1,5 +1,6 @@
 [requires]
 glfw/3.3.3
+freetype/2.10.4
 
 [generators]
 cmake

@@ -4,7 +4,7 @@ project(arcanoid CXX)
     include(vendor/conanbuildinfo.cmake)
     conan_basic_setup()
 
-    add_executable(arcanoid WIN32 src/main.cpp src/glad.cpp)
+    add_executable(arcanoid src/main.cpp src/glad.cpp)
     target_link_libraries(arcanoid PUBLIC ${CONAN_LIBS})
     target_compile_features(arcanoid PUBLIC cxx_std_20)
     target_include_directories(arcanoid PUBLIC src glm)
@@ -13,3 +13,5 @@ project(arcanoid CXX)
         PROPERTIES
             VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/res
             MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
+    set_property(TARGET arcanoid PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")

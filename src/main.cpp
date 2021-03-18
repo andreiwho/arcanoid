@@ -11,6 +11,8 @@
 #include <memory>
 #include <string_view>
 
+#include <type_traits>
+
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -19,7 +21,7 @@ using Vec2 = glm::vec2;
 using Mat4 = glm::mat4;
 
 template<typename T> using Scoped = std::unique_ptr<T>;
-template<typename T> using Ref = std::shared_ptr<T>;
+
 
 #include <vector>
 #include <fstream>
@@ -27,7 +29,118 @@ template<typename T> using Ref = std::shared_ptr<T>;
 using namespace std::string_literals;
 
 // -------------------------------------------------------------------------------------------
-class Shader
+class IRefCounted
+{
+private:
+    size_t refCount{ 1 };
+
+public:
+    virtual ~IRefCounted() = default;
+
+    void addRef()
+    {
+        refCount++;
+    }
+    
+    void release()
+    {
+        refCount--;
+        if (refCount == 0)
+        {
+            delete this;
+        }
+    }
+
+    size_t getRefCount() const
+    {
+        return refCount;
+    }
+};
+
+template<typename T>
+concept RefCounted = std::is_base_of_v<IRefCounted, T>;
+
+template<RefCounted T>
+class RefCnt
+{
+private:
+    T* object{};
+
+    RefCnt(T* object) 
+        :   object(object)
+    {}
+public:
+    template<typename ... Args>
+    static RefCnt<T> make(Args&& ... args)
+    {
+        return RefCnt<T>(new T(std::forward<Args>(args)...));
+    }
+
+    ~RefCnt()
+    {
+        if (object)
+        {
+            object->release();
+        }
+    }
+
+    RefCnt() = default;
+
+    RefCnt(const RefCnt<T>& other)
+        : object(other.object)
+    {
+        object->addRef();
+    }
+
+    RefCnt& operator=(const RefCnt<T>& other)
+    {
+
+        if (object)
+        {
+            object->release();
+        }
+        object = other.object;
+        object->addRef();
+        return *this;
+    }
+
+    RefCnt(RefCnt<T>&& other) noexcept
+        :   object(other.object)
+    {
+        other.object = nullptr;
+    }
+
+    RefCnt& operator=(RefCnt<T>&& other) noexcept
+    {
+        if (object)
+        {
+            object->release();
+        }
+        object = other.object;
+        other.object = nullptr;
+        return *this;
+    }
+
+    T* operator->()
+    {
+        return object;
+    }
+
+    T& operator*()
+    {
+        return *object;
+    }
+
+    T* get()
+    {
+        return object;
+    }
+};
+
+template<typename T> using Ref = RefCnt<T>;
+
+// -------------------------------------------------------------------------------------------
+class Shader : public IRefCounted
 {
 private:
     GLuint id{ 0 };
@@ -160,7 +273,7 @@ void APIENTRY glCallback(GLenum source, GLenum type, GLuint id, GLenum severity,
 }
 
 // -------------------------------------------------------------------------------------------
-class Buffer
+class Buffer : public IRefCounted
 {
 private:
     GLuint id{ 0 };
@@ -228,7 +341,7 @@ public:
 
 
 // -------------------------------------------------------------------------------------------
-class VertexArray
+class VertexArray : public IRefCounted
 {
 private:
     GLuint id{ 0 };
@@ -318,7 +431,7 @@ public:
 
 
 // -------------------------------------------------------------------------------------------
-class Quad
+class Quad : public IRefCounted
 {
     Ref<VertexArray> vao;
     Ref<Buffer> vbo;
@@ -345,10 +458,10 @@ public:
             0,1,3,3,1,2
         };
 
-        vbo = std::make_shared<Buffer>(GL_ARRAY_BUFFER, GL_STATIC_DRAW, vertices);
-        ibo = std::make_shared<Buffer>(GL_ELEMENT_ARRAY_BUFFER, GL_STATIC_DRAW, indices);
+        vbo = Ref<Buffer>::make(GL_ARRAY_BUFFER, GL_STATIC_DRAW, vertices);
+        ibo = Ref<Buffer>::make(GL_ELEMENT_ARRAY_BUFFER, GL_STATIC_DRAW, indices);
 
-        vao = std::make_shared<VertexArray>();
+        vao = Ref<VertexArray>::make();
 
         std::vector<VertexArray::LayoutElem> layout = {
             {0, 2, GL_FLOAT, false, sizeof(Vertex), 0}
@@ -358,7 +471,7 @@ public:
         vao->bindIndexBuffer(ibo.get());
         vao->bindLayout(layout);
 
-        shader = std::make_shared<Shader>(vs, fs);
+        shader = Ref<Shader>::make(vs, fs);
     }
 
     void draw(const Mat4& projection)
@@ -400,7 +513,7 @@ public:
     }
 };
 
-class PlayerPlatform
+class PlayerPlatform : public IRefCounted
 {
 private:
     Quad quad;
@@ -433,7 +546,7 @@ public:
 };
 
 // -------------------------------------------------------------------------------------------
-class BoxGrid
+class BoxGrid : public IRefCounted
 {
 public:
     struct Box
@@ -488,10 +601,10 @@ public:
         vertices = generateVertices(position, boxSize, margin, countX, countY);
         auto indices = generateIndices(vertices.size());
 
-        vbo = std::make_shared<Buffer>(GL_ARRAY_BUFFER, GL_STATIC_DRAW, vertices);
-        ibo = std::make_shared<Buffer>(GL_ELEMENT_ARRAY_BUFFER, GL_STATIC_DRAW, indices);
+        vbo = Ref<Buffer>::make(GL_ARRAY_BUFFER, GL_STATIC_DRAW, vertices);
+        ibo = Ref<Buffer>::make(GL_ELEMENT_ARRAY_BUFFER, GL_STATIC_DRAW, indices);
 
-        vao = std::make_shared<VertexArray>();
+        vao = Ref<VertexArray>::make();
 
         std::vector<VertexArray::LayoutElem> layout = {
             {0, 2, GL_FLOAT, false, sizeof(Vertex), 0}
@@ -501,7 +614,7 @@ public:
         vao->bindIndexBuffer(ibo.get());
         vao->bindLayout(layout);
 
-        shader = std::make_shared<Shader>("shaders/box.vert", "shaders/box.frag");
+        shader = Ref<Shader>::make("shaders/box.vert", "shaders/box.frag");
 
         indexCount = indices.size();
     }
@@ -587,7 +700,7 @@ public:
 };
 
 
-class Ball
+class Ball : public IRefCounted
 {
 private:
     Quad quad;
@@ -622,12 +735,12 @@ public:
     }
 
     // Test code before implementing collision detection
+    float xStep = 1.0f;
+    float yStep = -1.0f;
     void bounce(float speed)
     {
         float yBouncePoint = 1.499f - (quad.getSize().y / 2.0f);
         float xBouncePoint = 1.999f - (quad.getSize().x / 2.0f);
-        static float xStep = 1.0f;
-        static float yStep = 1.0f;
 
         quad.moveX(xStep * speed);
         quad.moveY(yStep * speed);
@@ -721,6 +834,11 @@ private:
             glfwSetWindowShouldClose(window, 1);
         }
 
+        if (glfwGetKey(window, GLFW_KEY_R))
+        {
+            createResources();
+        }
+
         player->move(deltaTime * -glfwGetKey(window, GLFW_KEY_A), 1.5f);
         player->move(deltaTime * glfwGetKey(window, GLFW_KEY_D), 1.5f);
         ball->bounce(deltaTime * 1.5f);
@@ -773,20 +891,20 @@ private:
     // Load assets
     void createResources()
     {
-        player = std::make_shared<PlayerPlatform>(Vec2{ 0.0f, -0.6f }, Vec2{ 0.4f, 0.05f });
+        player = Ref<PlayerPlatform>::make(Vec2{ 0.0f, -0.6f }, Vec2{ 0.4f, 0.05f });
 
         // Starting margin
         //  -2.0f + margin + xSize / 2, 1.5f - margin - ySize / 2
 
         constexpr int gridX = 10;
-        constexpr int gridY = 10;
+        constexpr int gridY = 9;
 
         constexpr float margin = 0.01f;
         constexpr float xSize = 4.0f / gridX - margin * 1.1f;
         constexpr float ySize = xSize / 3;
 
-        grid = std::make_shared<BoxGrid>(Vec2{ -2.0f + margin + xSize / 2, 1.5f - margin - ySize / 2 }, Vec2(xSize, ySize), margin, gridX, gridY);
-        ball = std::make_shared<Ball>(Vec2{ 0.0f, 0.0f }, Vec2{ 0.1f, 0.1f }, player, grid);
+        grid = Ref<BoxGrid>::make(Vec2{ -2.0f + margin + xSize / 2, 1.5f - margin - ySize / 2 }, Vec2(xSize, ySize), margin, gridX, gridY);
+        ball = Ref<Ball>::make(Vec2{ 0.0f, 0.0f }, Vec2{ 0.1f, 0.1f }, player, grid);
 
         orthoMatrix = glm::ortho(-2.0f, 2.0f, -1.5f, 1.5f);
     }
@@ -812,8 +930,10 @@ int main()
 }
 
 #ifdef _WIN32
-int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_opt_ LPSTR, _In_opt_ int)
+int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int)
 {
+    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
+
     return main();
 }
 #endif
