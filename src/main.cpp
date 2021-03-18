@@ -1,3 +1,7 @@
+#ifdef _WIN32
+#   include <Windows.h>
+#endif
+
 #include "glad/glad.h"
 #include <GLFW/glfw3.h>
 
@@ -403,7 +407,7 @@ private:
 
 public:
     PlayerPlatform(Vec2 position, Vec2 size)
-        : quad(position, size, "basic.vert", "basic.frag")
+        : quad(position, size, "shaders/basic.vert", "shaders/basic.frag")
     {
     }
 
@@ -497,7 +501,7 @@ public:
         vao->bindIndexBuffer(ibo.get());
         vao->bindLayout(layout);
 
-        shader = std::make_shared<Shader>("box.vert", "box.frag");
+        shader = std::make_shared<Shader>("shaders/box.vert", "shaders/box.frag");
 
         indexCount = indices.size();
     }
@@ -593,7 +597,7 @@ private:
 
 public:
     Ball(Vec2 position, Vec2 size, const Ref<PlayerPlatform>& player, const Ref<BoxGrid>& grid)
-        : quad(position, size, "ball.vert", "ball.frag"), player(player), grid(grid)
+        : quad(position, size, "shaders/ball.vert", "shaders/ball.frag"), player(player), grid(grid)
     {}
 
     void draw(const Mat4& projection)
@@ -806,3 +810,10 @@ int main()
         return -1;
     }
 }
+
+#ifdef _WIN32
+int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_opt_ LPSTR, _In_opt_ int)
+{
+    return main();
+}
+#endif
