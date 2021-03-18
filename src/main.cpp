@@ -1,4 +1,6 @@
 #ifdef _WIN32
+#   define WIN32_LEAN_AND_MEAN
+#   define NOMINMAX
 #   include <Windows.h>
 #endif
 
@@ -7,6 +9,8 @@
 
 #include <AL/al.h>
 #include <AL/alc.h>
+
+#include "audio.h"
 
 
 #include <iostream>
@@ -143,7 +147,16 @@ public:
 template<typename T> using Ref = RefCnt<T>;
 
 // -------------------------------------------------------------------------------------------
+class AudioEntry : public IRefCounted
+{
+private:
 
+public:
+    AudioEntry(std::string_view file)
+    {
+        
+    }
+};
 
 // -------------------------------------------------------------------------------------------
 class Shader : public IRefCounted
