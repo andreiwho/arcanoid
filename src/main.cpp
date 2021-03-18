@@ -694,7 +694,7 @@ public:
 
     int run()
     {
-        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClearColor(0.2f, 0.1f, 0.3f, 1.0f);
         while (!glfwWindowShouldClose(window))
         {
             auto now = glfwGetTime();
@@ -712,6 +712,11 @@ public:
 private:
     void update(float deltaTime)
     {
+        if (glfwGetKey(window, GLFW_KEY_ESCAPE))
+        {
+            glfwSetWindowShouldClose(window, 1);
+        }
+
         player->move(deltaTime * -glfwGetKey(window, GLFW_KEY_A), 1.5f);
         player->move(deltaTime * glfwGetKey(window, GLFW_KEY_D), 1.5f);
         ball->bounce(deltaTime * 1.5f);
@@ -770,7 +775,7 @@ private:
         //  -2.0f + margin + xSize / 2, 1.5f - margin - ySize / 2
 
         constexpr int gridX = 10;
-        constexpr int gridY = 8;
+        constexpr int gridY = 10;
 
         constexpr float margin = 0.01f;
         constexpr float xSize = 4.0f / gridX - margin * 1.1f;
