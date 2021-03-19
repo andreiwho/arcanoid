@@ -1,7 +1,8 @@
 [requires]
 glfw/3.3.3
 freetype/2.10.4
-openal/1.21.0
+openal/1.21.0 
+libsndfile/1.0.30
 
 [generators]
 cmake
