@@ -213,6 +213,7 @@ class AudioSource : public IRefCounted
 {
 private:
     ALuint source{ 0 };
+    ALuint currentBuffer{ 0 };
 
 public:
     AudioSource()
@@ -257,8 +258,12 @@ public:
 
     void playSound(const Ref<AudioEntry>& entry)
     {
-        alSourcei(source, AL_BUFFER, entry->getBuffer());
-        alSourcef(source, AL_PITCH, 1.0f);
+        if (currentBuffer != entry->getBuffer())
+        {
+            alSourcei(source, AL_BUFFER, entry->getBuffer());
+            alSourcef(source, AL_PITCH, 1.0f);
+            currentBuffer = entry->getBuffer();
+        }
         alSourcePlay(source);
     }
 };
@@ -831,10 +836,12 @@ private:
 
     Ref<PlayerPlatform> player;
     Ref<BoxGrid> grid;
+    Ref<AudioEntry> audioEntry;
+    Ref<AudioSource> audioSource;
 
 public:
     Ball(Vec2 position, Vec2 size, const Ref<PlayerPlatform>& player, const Ref<BoxGrid>& grid)
-        : quad(position, size, "shaders/ball.vert", "shaders/ball.frag"), player(player), grid(grid)
+        : quad(position, size, "shaders/ball.vert", "shaders/ball.frag"), player(player), grid(grid), audioEntry(Ref<AudioEntry>::make("audio/click.wav")), audioSource(Ref<AudioSource>::make())
     {}
 
     void draw(const Mat4& projection)
@@ -872,10 +879,12 @@ public:
         if (quad.getPosition().x > xBouncePoint)
         {
             xStep = -1.0f;
+            audioSource->playSound(audioEntry);
         }
         if (quad.getPosition().x < -xBouncePoint)
         {
             xStep = 1.0f;
+            audioSource->playSound(audioEntry);
         }
 
         // Check for player intersection
@@ -888,6 +897,7 @@ public:
             && getPosition().y + selfBias > player->getPosition().y - player->getSize().y / 2 - collisionBias)
         {
             yStep = -yStep;
+            audioSource->playSound(audioEntry);
             return;
         }
 
@@ -898,6 +908,7 @@ public:
             {
                 yStep = -yStep;
                 grid->destroyBox(i);
+                audioSource->playSound(audioEntry);
                 return;
             }
         }
@@ -905,10 +916,12 @@ public:
         if (quad.getPosition().y > yBouncePoint)
         {
             yStep = -1.0f;
+            audioSource->playSound(audioEntry);
         }
         if (quad.getPosition().y < -yBouncePoint)
         {
             yStep = 1.0f;
+            audioSource->playSound(audioEntry);
         }
     }
 };
