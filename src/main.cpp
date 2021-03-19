@@ -133,6 +133,11 @@ public:
         return object;
     }
 
+    const T* operator->() const
+    {
+        return object;
+    }
+
     T& operator*()
     {
         return *object;
@@ -150,7 +155,7 @@ template<typename T> using Ref = RefCnt<T>;
 class AudioEntry : public IRefCounted
 {
 private:
-
+    ALuint buffer{ 0 };
 public:
     AudioEntry(std::string_view file)
     {
@@ -158,6 +163,103 @@ public:
         std::cout << "Channels: " << audioFile.getChannels() << '\n';
         std::cout << "Frames count: " << audioFile.getFramesCount() << '\n';
         std::cout << "Format: " << std::hex << audioFile.getFormat() << '\n';
+
+        alGenBuffers(1, &buffer);
+        alBufferData(buffer, audioFile.getChannels() == 1 ? AL_FORMAT_MONO16 : AL_FORMAT_STEREO16,
+            audioFile.getData(), static_cast<ALsizei>(audioFile.getSize()), audioFile.getSampleRate());
+    }
+
+    ~AudioEntry()
+    {
+        if (buffer)
+        {
+            alDeleteBuffers(1, &buffer);
+            buffer = 0;
+        }
+    }
+
+    AudioEntry(const AudioEntry&) = delete;
+    AudioEntry& operator=(const AudioEntry&) = delete;
+
+    AudioEntry(AudioEntry&& other) noexcept
+    {
+        if (buffer)
+        {
+            alDeleteBuffers(1, &buffer);
+        }
+        buffer = other.buffer;
+        other.buffer = 0;
+    }
+
+    AudioEntry& operator=(AudioEntry&& other) noexcept
+    {
+        if (buffer)
+        {
+            alDeleteBuffers(1, &buffer);
+        }
+        buffer = other.buffer;
+        other.buffer = 0;
+
+        return *this;
+    }
+
+    inline ALuint getBuffer() const
+    {
+        return buffer;
+    }
+};
+
+class AudioSource : public IRefCounted
+{
+private:
+    ALuint source{ 0 };
+
+public:
+    AudioSource()
+    {
+        alGenSources(1, &source);
+    }
+
+    ~AudioSource()
+    {
+        if (source)
+        {
+            alDeleteSources(1, &source);
+        }
+    }
+
+    AudioSource(const AudioSource&) = delete;
+    AudioSource& operator=(const AudioSource&) = delete;
+
+    AudioSource(AudioSource&& other) noexcept
+    {
+        if (source)
+        {
+            alDeleteSources(1, &source);
+        }
+
+        source = other.source;
+        other.source = 0;
+    }
+
+    AudioSource& operator=(AudioSource&& other) noexcept
+    {
+        if (source)
+        {
+            alDeleteSources(1, &source);
+        }
+
+        source = other.source;
+        other.source = 0;
+
+        return *this;
+    }
+
+    void playSound(const Ref<AudioEntry>& entry)
+    {
+        alSourcei(source, AL_BUFFER, entry->getBuffer());
+        alSourcef(source, AL_PITCH, 1.0f);
+        alSourcePlay(source);
     }
 };
 

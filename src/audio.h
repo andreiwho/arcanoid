@@ -48,4 +48,14 @@ public:
     {
         return seekable;
     }
+
+    inline size_t getSize() const
+    {
+        return samples.size() * sizeof(decltype(samples)::value_type);
+    }
+
+    inline const short* getData() const
+    {
+        return samples.data();
+    }
 };
