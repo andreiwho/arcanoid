@@ -154,11 +154,10 @@ private:
 public:
     AudioEntry(std::string_view file)
     {
-        ALubyte numChannels;
-        ALint sampleRate;
-        ALubyte bitsPerSample;
-        ALsizei size;
-        wavLoadFile(file, &numChannels, &sampleRate, &bitsPerSample, &size);
+        AudioFile audioFile(file);
+        std::cout << "Channels: " << audioFile.getChannels() << '\n';
+        std::cout << "Frames count: " << audioFile.getFramesCount() << '\n';
+        std::cout << "Format: " << std::hex << audioFile.getFormat() << '\n';
     }
 };
 

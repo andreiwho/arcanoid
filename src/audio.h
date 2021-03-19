@@ -3,11 +3,8 @@
 #include <string_view>
 #include <vector>
 #include <fstream>
-#include <AL/al.h>
 
 // Read wav file
-std::vector<char> wavLoadFile(std::string_view fileName, ALubyte* numChannels, ALint* sampleRate, ALubyte* bitsPerSample, ALsizei* size);
-
 class AudioFile
 {
 private:
@@ -17,10 +14,12 @@ private:
     int format{};
     int sections{};
     int seekable{};
+
+    std::vector<short> samples;
 public:
     AudioFile(std::string_view filePath);
 
-    inline size_t getFramesCound() const
+    inline size_t getFramesCount() const
     {
         return frames;
     }
