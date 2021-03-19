@@ -160,10 +160,6 @@ public:
     AudioEntry(std::string_view file)
     {
         AudioFile audioFile(file);
-        std::cout << "Channels: " << audioFile.getChannels() << '\n';
-        std::cout << "Frames count: " << audioFile.getFramesCount() << '\n';
-        std::cout << "Format: " << std::hex << audioFile.getFormat() << '\n';
-
         alGenBuffers(1, &buffer);
         alBufferData(buffer, audioFile.getChannels() == 1 ? AL_FORMAT_MONO16 : AL_FORMAT_STEREO16,
             audioFile.getData(), static_cast<ALsizei>(audioFile.getSize()), audioFile.getSampleRate());
@@ -225,6 +221,8 @@ public:
     {
         if (source)
         {
+            alSourceStop(source);
+            alSourcei(source, AL_BUFFER, 0);
             alDeleteSources(1, &source);
         }
     }
@@ -638,7 +636,7 @@ public:
         float clamp = 1.5f - (size.y / 2.0f);
 
         position.y += amount;
-        position.y = glm::clamp(position.y, -clamp, clamp);
+        position.y = glm::clamp(position.y, -clamp - 1.0f, clamp);
     }
 };
 
@@ -685,14 +683,12 @@ public:
         Vertex bottomRight;
         Vertex topRight;
 
-        bool hit(Vec2 position, Vec2 size) const
+        bool hit(Vec2 position, Vec2 size, float collisionBias) const
         {
-            constexpr float selfBias = 0.1f;
-
-            if (position.x - selfBias < topRight.position.x
-                && position.x + selfBias > topLeft.position.x
-                && position.y - selfBias < topLeft.position.y
-                && position.y + selfBias > bottomRight.position.y)
+            if (position.x - collisionBias < topRight.position.x
+                && position.x + collisionBias > topLeft.position.x
+                && position.y - collisionBias < topLeft.position.y
+                && position.y + collisionBias > bottomRight.position.y)
             {
                 return true;
             }
@@ -839,6 +835,8 @@ private:
     Ref<AudioEntry> audioEntry;
     Ref<AudioSource> audioSource;
 
+    float selfCollisionBias = 0.02f;
+
 public:
     Ball(Vec2 position, Vec2 size, const Ref<PlayerPlatform>& player, const Ref<BoxGrid>& grid)
         : quad(position, size, "shaders/ball.vert", "shaders/ball.frag"), player(player), grid(grid), audioEntry(Ref<AudioEntry>::make("audio/click.wav")), audioSource(Ref<AudioSource>::make())
@@ -867,36 +865,41 @@ public:
 
     // Test code before implementing collision detection
     float xStep = 1.0f;
-    float yStep = -1.0f;
+    float yStep = +1.0f;
     void bounce(float speed)
     {
-        float yBouncePoint = 1.499f - (quad.getSize().y / 2.0f);
-        float xBouncePoint = 1.999f - (quad.getSize().x / 2.0f);
+        if (getPosition().y < -getYBouncePoint() - 0.1f)
+        {
+            return;
+        }
+
+        float yBouncePoint = 1.499f - (getSize().y / 2.0f);
+        float xBouncePoint = 1.999f - (getSize().x / 2.0f);
 
         quad.moveX(xStep * speed);
         quad.moveY(yStep * speed);
 
-        if (quad.getPosition().x > xBouncePoint)
+        if (quad.getPosition().x > getXBouncePoint())
         {
             xStep = -1.0f;
             audioSource->playSound(audioEntry);
         }
-        if (quad.getPosition().x < -xBouncePoint)
+        if (quad.getPosition().x < -getXBouncePoint())
         {
             xStep = 1.0f;
             audioSource->playSound(audioEntry);
         }
 
-        // Check for player intersection
+        // Check for player intersection (player position)
         constexpr float collisionBias = 0.6f;
-        constexpr float selfBias = 0.1f;
 
-        if (getPosition().x - selfBias < player->getPosition().x + player->getSize().x / 2
-            && getPosition().x + selfBias > player->getPosition().x - player->getSize().x / 2
-            && getPosition().y - selfBias< player->getPosition().y + player->getSize().y / 2 - collisionBias
-            && getPosition().y + selfBias > player->getPosition().y - player->getSize().y / 2 - collisionBias)
+        if (getPosition().x - selfCollisionBias < player->getPosition().x + player->getSize().x / 2
+            && getPosition().x + selfCollisionBias > player->getPosition().x - player->getSize().x / 2
+            && getPosition().y - selfCollisionBias< player->getPosition().y + player->getSize().y / 2 - collisionBias
+            && getPosition().y + selfCollisionBias > player->getPosition().y - player->getSize().y / 2 - collisionBias)
         {
             yStep = -yStep;
+            quad.moveY(0.05f);
             audioSource->playSound(audioEntry);
             return;
         }
@@ -904,7 +907,7 @@ public:
         const auto& boxes = grid->getBoxes();
         for (size_t i = 0; i < boxes.size(); i++)
         {
-            if (boxes[i].hit(getPosition(), getSize()))
+            if (boxes[i].hit(getPosition(), getSize(), selfCollisionBias))
             {
                 yStep = -yStep;
                 grid->destroyBox(i);
@@ -913,16 +916,27 @@ public:
             }
         }
 
-        if (quad.getPosition().y > yBouncePoint)
+        if (quad.getPosition().y > getYBouncePoint())
         {
             yStep = -1.0f;
             audioSource->playSound(audioEntry);
         }
-        if (quad.getPosition().y < -yBouncePoint)
-        {
-            yStep = 1.0f;
-            audioSource->playSound(audioEntry);
-        }
+    }
+
+    inline bool outOfWorld() const
+    {
+        return getPosition().y < -getYBouncePoint();
+    }
+
+private:
+    float getYBouncePoint() const
+    {
+        return 1.499f - (getSize().y / 2.0f);
+    }
+
+    float getXBouncePoint() const
+    {
+        return 1.999f - (getSize().x / 2.0f);
     }
 };
 
@@ -938,6 +952,12 @@ private:
     Ref<PlayerPlatform> player;
     Ref<Ball> ball;
     Ref<BoxGrid> grid;
+
+    Ref<AudioEntry> gameOverEntry;
+    Ref<AudioSource> narrator;
+    
+    bool gameOver = false;
+
 
     Mat4 orthoMatrix;
 public:
@@ -982,6 +1002,16 @@ private:
         player->move(deltaTime * -glfwGetKey(window, GLFW_KEY_A), 1.5f);
         player->move(deltaTime * glfwGetKey(window, GLFW_KEY_D), 1.5f);
         ball->bounce(deltaTime * 1.5f);
+
+        if (ball->outOfWorld())
+        {
+            static bool played = false;
+            if (!gameOver)
+            {
+                narrator->playSound(gameOverEntry);
+                gameOver = true;
+            }
+        }
     }
 
     void render()
@@ -1044,6 +1074,9 @@ private:
         }
 
         alcMakeContextCurrent(audioContext);
+
+        gameOverEntry = Ref<AudioEntry>::make("audio/gameOver.aiff");
+        narrator = Ref<AudioSource>::make();
     }
 
     // Load assets
@@ -1055,18 +1088,25 @@ private:
         //  -2.0f + margin + xSize / 2, 1.5f - margin - ySize / 2
 
         constexpr int gridX = 10;
-        constexpr int gridY = 9;
+        constexpr int gridY = 7;
 
         constexpr float margin = 0.01f;
         constexpr float xSize = 4.0f / gridX - margin * 1.1f;
         constexpr float ySize = xSize / 3;
 
-        grid = Ref<BoxGrid>::make(Vec2{ -2.0f + margin + xSize / 2, 1.5f - margin - ySize / 2 }, Vec2(xSize, ySize), margin, gridX, gridY);
+        grid = Ref<BoxGrid>::make(
+            Vec2{ -2.0f + margin + xSize / 2, 1.5f - margin - ySize / 2 }, 
+            Vec2(xSize, ySize), 
+            margin, 
+            gridX, 
+            gridY
+        );
+
         ball = Ref<Ball>::make(Vec2{ 0.0f, 0.0f }, Vec2{ 0.1f, 0.1f }, player, grid);
 
         orthoMatrix = glm::ortho(-2.0f, 2.0f, -1.5f, 1.5f);
 
-        Ref<AudioEntry> entry = Ref<AudioEntry>::make("audio/click.wav");
+        gameOver = false;
     }
 
 };
