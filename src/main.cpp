@@ -9,14 +9,14 @@
 
 #include <AL/al.h>
 #include <AL/alc.h>
-
-#include "audio.h"
+#include <sndfile.h>
 
 
 #include <iostream>
 #include <stdexcept>
 #include <memory>
 #include <string_view>
+#include <array>
 
 #include <type_traits>
 
@@ -36,6 +36,9 @@ template<typename T> using Scoped = std::unique_ptr<T>;
 using namespace std::string_literals;
 
 // -------------------------------------------------------------------------------------------
+// --------------------------- MEMORY MANAGEMENT ---------------------------------------------
+// -------------------------------------------------------------------------------------------
+#pragma region MEMORY MANAGEMENT
 class IRefCounted
 {
 private:
@@ -150,6 +153,87 @@ public:
 };
 
 template<typename T> using Ref = RefCnt<T>;
+#pragma endregion MEMORY MANAGEMENT
+
+// -------------------------------------------------------------------------------------------
+// ----------------------------- AUDIO SYSTEM ------------------------------------------------
+// -------------------------------------------------------------------------------------------
+#pragma region AUDIO SYSTEM
+class AudioFile
+{
+private:
+    size_t frames{};
+    int sampleRate{};
+    int channels{};
+    int format{};
+    int sections{};
+    int seekable{};
+
+    std::vector<short> samples;
+public:
+    AudioFile(std::string_view filePath)
+    {
+        SF_INFO info = {};
+        SNDFILE* file = sf_open(filePath.data(), SFM_READ, &info);
+
+        // Read data
+        std::array<short, 4096> data;
+        size_t count = 0;
+        while ((count = sf_read_short(file, data.data(), data.size())) != 0)
+        {
+            samples.insert(samples.end(), data.begin(), data.begin() + count);
+        }
+
+        frames = info.frames;
+        sampleRate = info.samplerate;
+        channels = info.channels;
+        format = info.format;
+        sections = info.sections;
+        seekable = info.seekable;
+
+        sf_close(file);
+    }
+
+    inline size_t getFramesCount() const
+    {
+        return frames;
+    }
+
+    inline int getSampleRate() const
+    {
+        return sampleRate;
+    }
+
+    inline int getChannels() const
+    {
+        return channels;
+    }
+
+    inline int getFormat() const
+    {
+        return format;
+    }
+
+    inline int getSections() const
+    {
+        return sections;
+    }
+
+    inline int isSeekable() const
+    {
+        return seekable;
+    }
+
+    inline size_t getSize() const
+    {
+        return samples.size() * sizeof(decltype(samples)::value_type);
+    }
+
+    inline const short* getData() const
+    {
+        return samples.data();
+    }
+};
 
 // -------------------------------------------------------------------------------------------
 class AudioEntry : public IRefCounted
@@ -265,8 +349,13 @@ public:
         alSourcePlay(source);
     }
 };
+#pragma endregion AUDIO SYSTEM
+
 
 // -------------------------------------------------------------------------------------------
+// ----------------------------- GRAPHICS PRIMITIVES -----------------------------------------
+// -------------------------------------------------------------------------------------------
+#pragma region GRAPHICS PRIMITIVES
 class Shader : public IRefCounted
 {
 private:
@@ -576,35 +665,12 @@ public:
         return id;
     }
 };
+#pragma endregion GRAPHICS PRIMITIVES
 
 // -------------------------------------------------------------------------------------------
-class ParticleSystem : public IRefCounted
-{
-private:
-    Ref<VertexArray> vao;
-    Ref<Buffer> vertexBuffer;
-    Ref<Buffer> indexBuffer;
-
-    float lifetime = 0.1f;
-    size_t maxParticles = 32;
-    Vec2 position;
-public:
-    ParticleSystem(size_t maxParticles, Vec2 position)
-        :   maxParticles(maxParticles), position(position)
-    {
-        vao = Ref<VertexArray>::make();
-        vertexBuffer = Ref<Buffer>::make(GL_ARRAY_BUFFER, GL_DYNAMIC_DRAW, maxParticles * sizeof Vertex * 4);
-        indexBuffer = Ref<Buffer>::make(GL_ELEMENT_ARRAY_BUFFER, GL_DYNAMIC_DRAW, maxParticles * sizeof(GLuint) * 6);
-    }
-
-    void update(float deltaTime)
-    {
-        // Recreating particles inside the particle system
-    }
-};
-
-
+// ----------------------------- GAME OBJECTS ------------------------------------------------
 // -------------------------------------------------------------------------------------------
+#pragma region GAME OBJECTS
 class Quad : public IRefCounted
 {
     Ref<VertexArray> vao;
@@ -986,6 +1052,7 @@ private:
         return 1.999f - (getSize().x / 2.0f);
     }
 };
+#pragma endregion GAME OBJECTS
 
 
 // -------------------------------------------------------------------------------------------
