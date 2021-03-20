@@ -407,6 +407,9 @@ private:
     GLenum kind{ 0 };
     GLenum usage{ 0 };
 
+    size_t capacity{ 0 };
+    size_t size{ 0 };
+
 public:
     template<typename T>
     Buffer(GLenum kind, GLenum usage, const std::vector<T>& data)
@@ -419,6 +422,24 @@ public:
         }
 
         glNamedBufferData(id, data.size() * sizeof T, data.data(), usage);
+    }
+
+    Buffer(GLenum kind, GLenum usage, size_t size)
+        :   capacity(size)
+    {
+        glCreateBuffers(1, &id);
+        if (id == 0)
+        {
+            throw std::runtime_error("Failed to create buffer");
+        }
+
+        glNamedBufferStorage(id, static_cast<GLsizeiptr>(size), nullptr, usage);
+    }
+
+    template<typename T> void batch(const std::vector<T>& data)
+    {
+        assert(size + data.size() * sizeof T < capacity);
+        glNamedBufferSubData(id, size, static_cast<GLsizeiptr>(data.size() * sizeof T), data.data());
     }
 
     ~Buffer()
@@ -553,6 +574,32 @@ public:
     GLuint getId() const
     {
         return id;
+    }
+};
+
+// -------------------------------------------------------------------------------------------
+class ParticleSystem : public IRefCounted
+{
+private:
+    Ref<VertexArray> vao;
+    Ref<Buffer> vertexBuffer;
+    Ref<Buffer> indexBuffer;
+
+    float lifetime = 0.1f;
+    size_t maxParticles = 32;
+    Vec2 position;
+public:
+    ParticleSystem(size_t maxParticles, Vec2 position)
+        :   maxParticles(maxParticles), position(position)
+    {
+        vao = Ref<VertexArray>::make();
+        vertexBuffer = Ref<Buffer>::make(GL_ARRAY_BUFFER, GL_DYNAMIC_DRAW, maxParticles * sizeof Vertex * 4);
+        indexBuffer = Ref<Buffer>::make(GL_ELEMENT_ARRAY_BUFFER, GL_DYNAMIC_DRAW, maxParticles * sizeof(GLuint) * 6);
+    }
+
+    void update(float deltaTime)
+    {
+        // Recreating particles inside the particle system
     }
 };
 
